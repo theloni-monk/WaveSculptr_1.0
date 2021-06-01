@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 use web_sys::console;
-use web_sys::{AudioContext, OscillatorType};
+use web_sys::{AudioContext};
+use js_sys::{Float32Array};
 use rustfft::{Fft, FftPlanner, FftDirection, num_complex::Complex};
 
 //  Tests funcs
@@ -20,10 +21,10 @@ pub fn greet(name: &str) {
 pub fn midi_to_freq(note: u8) -> f32 {
     27.5 * 2f32.powf((note as f32 - 21.0) / 12.0)
 }
+const FFTSIZE:usize = 2048;
+const SAMPLESIZE:usize = 1024;
 
-const SampleSize:usize = 1024;
-
-#[wasm_bindgen]
+//arbitrary periodic wave
 struct WaveForm{
     fseries: Vec<Complex<f32>>,
     amp: Vec<Complex<f32>> //only real used
@@ -31,14 +32,13 @@ struct WaveForm{
 
 impl WaveForm{
     //gen basic sin wave on construction
-    pub fn new( fft:& dyn Fft<f32>) -> Result<WaveForm, JsValue>{
-        assert_eq!(fft.fft_direction(), FftDirection::Forward);
+    pub fn new(fft:&dyn Fft<f32>, bufferlen:usize) -> WaveForm{
+        let step = 2 as f64 * std::f64::consts::PI / bufferlen as f64;
 
-        let step = 2 as f64 * std::f64::consts::PI / SampleSize as f64;
-        let buff = Vec::new();
-        for i in 0usize..SampleSize{
-            //init as basic cosine wave from 0->2pi
-            buff.push(Complex{ re: ((i as f64) * step).cos() as f32,im: 0f32 });
+        let mut buff = vec![Complex{re: 0f32, im: 0f32}; bufferlen]; // empty complex buffer
+        for i in 0usize..bufferlen{
+            //init as basic sine wave from 0->2pi in real component
+            buff[i] = Complex{ re: ((i as f64) * step).sin() as f32, im: 0f32 };
         }
         let amp = buff.clone(); //save amplitude vals
 
@@ -46,10 +46,10 @@ impl WaveForm{
         let fseries = buff;
 
         return 
-        Ok(WaveForm{
+        WaveForm{
             fseries,
             amp,
-        });
+        };
     }
 
     //NOTE: fft must be in correct direction before calling these
@@ -57,63 +57,175 @@ impl WaveForm{
         //use inverse
         assert_eq!(fft.fft_direction(), FftDirection::Inverse);
 
-        let newA = self.fseries.clone();
-        fft.process(&mut newA);
+        let mut new_a = self.fseries.clone();
+        fft.process(&mut new_a);
 
-        self.amp = newA;
+        self.amp = new_a;
     }
 
     pub fn update_fseries(&mut self, fft: &dyn Fft<f32>){
         //use forward
         assert_eq!(fft.fft_direction(), FftDirection::Forward);
 
-        let newF = self.amp.clone();
-        fft.process(&mut newF);
-        self.fseries = newF;
+        let mut new_f = self.amp.clone();
+        fft.process(&mut new_f);
+        self.fseries = new_f;
     }
 }
 
 #[wasm_bindgen]
-struct WaveSynth {
+pub struct WaveSynth {
     // websys stuff
     ctx: AudioContext,
     osc: web_sys::OscillatorNode,
-    gain: web_sys::GainNode,
+    gain_node: web_sys::GainNode,
+    anal: web_sys::AnalyserNode,
     // our stuff
+    gain_val: f32,
     wavelet: WaveForm,
-    curr_notes: Vec<u8>,
-    fft_planner: FftPlanner<f32>,
-    fft: dyn Fft<f32>,
+    curr_note: u8, //currently mono
+    fft_planner: FftPlanner<f32>
 }
 
+//mono periodic synth
 #[wasm_bindgen]
 impl WaveSynth{
     #[wasm_bindgen(constructor)]
     pub fn new() -> Result<WaveSynth, JsValue>{
-        //init
-        let fft_planner = FftPlanner::new();
-        let fft = fft_planner.plan_fft_forward(SampleSize);
-        let wavelet = WaveForm::new(fft.as_ref());
+        // Create our web audio objects.
+        let ctx = web_sys::AudioContext::new().unwrap();
+        let osc = ctx.create_oscillator().unwrap();
+        let gain_node = ctx.create_gain().unwrap();
+        let anal = ctx.create_analyser().unwrap();
+        //link nodes
+        osc.connect_with_audio_node(&anal)?; //osc to anal
+        anal.connect_with_audio_node(&gain_node)?; //anal to gain
+        gain_node.connect_with_audio_node(&ctx.destination())?; //connect gain to speakers
 
+        //init fft lib stuff
+        let mut fft_planner = FftPlanner::new();
+        let fft = fft_planner.plan_fft_forward(FFTSIZE);
+        let wavelet = WaveForm::new(fft.as_ref(), FFTSIZE);
+
+        //init js-bound stuff
+        let curr_note = 0u8;
+        osc.frequency().set_value(440f32); // A4 note
+        let gain_val = 0.5f32;
+        gain_node.gain().set_value(gain_val); // starts at 50% vol for debug
+        
+        //set initial periodic wave with fseries of simple sin wave
+        let real = &mut [0f32, 1f32];
+        let imag = &mut [0f32, 0f32];
+        let p_wave = ctx.create_periodic_wave(real, imag).unwrap();
+        osc.set_periodic_wave(&p_wave);
+
+        //start osc
+        osc.start()?;
+        
         return Ok(
             WaveSynth{
-
+                ctx,
+                osc,
+                gain_node,   
+                anal,
+                wavelet,
+                gain_val,
+                curr_note,
+                fft_planner
             }
         )
     }
 
     #[wasm_bindgen]
     pub fn start_note(&mut self, note:u8){
-
+        self.curr_note = note;
+        let freq = midi_to_freq(note);
+        self.osc.frequency().set_value(freq);
+        self.gain_node.gain().set_value(self.gain_val); // turn on gain
     }
+
     #[wasm_bindgen]
-    pub fn end_note(&mut self, note:u8){
-
+    pub fn end_note(&mut self){
+        self.gain_node.gain().set_value(0f32);
+        //just turn off gain
     }
+
+    #[wasm_bindgen]
+    pub fn set_gain_node(&mut self, g:f32){
+        self.gain_val = g; //note only next note will be at requested volume
+    }
+
+    #[wasm_bindgen]
+    pub fn get_tspace(&self) -> Result<Float32Array,JsValue>{
+        let buff: &mut [f32; FFTSIZE] = &mut [0f32; FFTSIZE];
+        self.anal.get_float_time_domain_data(buff);
+        let js_buff = Float32Array::new(&JsValue::from_f64(FFTSIZE as f64)); //this is hacky but fuck it
+        js_buff.copy_from(buff);
+        return Ok(
+            js_buff
+        );
+    }
+
+    #[wasm_bindgen]
+    pub fn get_fspace(&self) -> Result<Float32Array,JsValue>{
+        let buff: &mut [f32; SAMPLESIZE] =  &mut [0f32; SAMPLESIZE];
+        self.anal.get_float_frequency_data(buff);
+        let js_buff = Float32Array::new(&JsValue::from_f64(SAMPLESIZE as f64)); //this is hacky but fuck it
+        js_buff.copy_from(buff);
+        return Ok(
+            js_buff
+        );
+    }
+
+    fn update_osc(&mut self){
+        let mut re_buff = vec![0f32; self.wavelet.fseries.len()];
+        let mut im_buff = vec![0f32; self.wavelet.fseries.len()];
+        for i in 0usize..self.wavelet.fseries.len(){
+            re_buff[i] = self.wavelet.fseries[i].re;
+            im_buff[i] = self.wavelet.fseries[i].im;
+        }
+        let per_wave = self.ctx.create_periodic_wave(re_buff.as_mut_slice(), im_buff.as_mut_slice()).unwrap();
+        self.osc.set_periodic_wave(&per_wave);
+    }
+
+    //@param: js_buff: Float32Array in Js of len SAMPLESIZE
+    #[wasm_bindgen]
+    pub fn set_wave_from_amp(&mut self, js_buff: Vec<f32>){
+        assert_eq![js_buff.len(), SAMPLESIZE];
+        let mut wave_buff = vec![Complex{re: 0f32,im: 0f32}; SAMPLESIZE];
+        for i in 0usize..js_buff.len(){
+            wave_buff[i] = Complex{re: js_buff[i], im: 0f32};
+        }
+        let mut wave = WaveForm{
+            fseries: vec![Complex{re: 0f32,im: 0f32}; FFTSIZE],
+            amp: wave_buff
+        };
+        let fft = self.fft_planner.plan_fft_forward(FFTSIZE);
+        wave.update_fseries(fft.as_ref());
+        self.wavelet = wave;
+        self.update_osc();
+    }
+
+    //@param: js_re_buff: Float32Array in Js of len FFTSIZE, js_im_buff: Float32Array in Js of len FFTSIZE
+    #[wasm_bindgen]
+    pub fn set_wave_from_fseries(&mut self, js_re_buff: Vec<f32>, js_im_buff: Vec<f32>){
+        assert_eq![js_re_buff.len(), FFTSIZE];
+        assert_eq![js_im_buff.len(), FFTSIZE];
+        let mut wave_buff = vec![Complex{re: 0f32,im: 0f32}; FFTSIZE];
+        for i in 0usize..js_re_buff.len(){
+            wave_buff[i] = Complex{re: js_re_buff[i], im: js_im_buff[i]};
+        }
+        let mut wave = WaveForm{
+            fseries: wave_buff,
+            amp: vec![Complex{re: 0f32,im: 0f32}; SAMPLESIZE]
+        };
+        let fft = self.fft_planner.plan_fft_inverse(FFTSIZE);
+        wave.update_amp(fft.as_ref());
+        self.wavelet = wave;
+        self.update_osc();
+    }
+
     
-    pub fn setWave(&mut self, wave: WaveForm){
-
-    }
 }
 
 
@@ -126,7 +238,6 @@ pub fn main_js() -> Result<(), JsValue> {
     console_error_panic_hook::set_once();
     // Your code goes here!
     console::log_1(&JsValue::from_str("rust linked successfully"));
-
 
     return Ok(());
 }

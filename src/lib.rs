@@ -21,8 +21,9 @@ pub fn greet(name: &str) {
 pub fn midi_to_freq(note: u8) -> f32 {
     27.5 * 2f32.powf((note as f32 - 21.0) / 12.0)
 }
-const FFTSIZE:usize = 2048;
-const SAMPLESIZE:usize = 1024;
+const FFTSIZE:usize = 256;
+const SAMPLESIZE:usize = 128;
+
 
 //arbitrary periodic wave
 struct WaveForm{
@@ -77,6 +78,7 @@ impl WaveForm{
 pub struct WaveSynth {
     // websys stuff
     ctx: AudioContext,
+    samplerate: f32,
     osc: web_sys::OscillatorNode,
     gain_node: web_sys::GainNode,
     anal: web_sys::AnalyserNode,
@@ -94,6 +96,7 @@ impl WaveSynth{
     pub fn new() -> Result<WaveSynth, JsValue>{
         // Create our web audio objects.
         let ctx = web_sys::AudioContext::new().unwrap();
+        let samplerate = ctx.sample_rate();
         let osc = ctx.create_oscillator().unwrap();
         let gain_node = ctx.create_gain().unwrap();
         let anal = ctx.create_analyser().unwrap();
@@ -106,6 +109,7 @@ impl WaveSynth{
         let mut fft_planner = FftPlanner::new();
         let fft = fft_planner.plan_fft_forward(FFTSIZE);
         let wavelet = WaveForm::new(fft.as_ref(), FFTSIZE);
+        anal.set_fft_size(FFTSIZE as u32);
 
         //init js-bound stuff
         let curr_note = 0u8;
@@ -125,6 +129,7 @@ impl WaveSynth{
         return Ok(
             WaveSynth{
                 ctx,
+                samplerate,
                 osc,
                 gain_node,   
                 anal,
@@ -153,6 +158,17 @@ impl WaveSynth{
     #[wasm_bindgen]
     pub fn set_gain_node(&mut self, g:f32){
         self.gain_val = g; //note only next note will be at requested volume
+    }
+
+    #[wasm_bindgen]
+    pub fn get_sample_rate(&self) -> Result<f32, JsValue>{
+        return Ok(self.samplerate); //note only next note will be at requested volume
+    }
+
+    
+    #[wasm_bindgen]
+    pub fn get_fft_len(&self) -> Result<f32, JsValue>{
+        return Ok(SAMPLESIZE as f32); //note only next note will be at requested volume
     }
 
     #[wasm_bindgen]

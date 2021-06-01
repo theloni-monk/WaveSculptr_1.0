@@ -31,6 +31,16 @@ struct WaveForm{
     amp: Vec<Complex<f32>> //only real used
 }
 
+pub fn split_complex_vec(input: &Vec<Complex<f32>>) -> (Vec<f32>, Vec<f32>) {
+    let mut re_buff = vec![0f32; input.len()];
+    let mut im_buff = vec![0f32; input.len()];
+    for i in 0usize..input.len(){
+        re_buff[i] = input[i].re;
+        im_buff[i] = input[i].im;
+    }
+    return (re_buff, im_buff);
+}
+
 impl WaveForm{
     //gen basic sin wave on construction
     pub fn new(fft:&dyn Fft<f32>, bufferlen:usize) -> WaveForm{
@@ -118,9 +128,8 @@ impl WaveSynth{
         gain_node.gain().set_value(gain_val); // starts at 50% vol for debug
         
         //set initial periodic wave with fseries of simple sin wave
-        let real = &mut [0f32, 1f32];
-        let imag = &mut [0f32, 0f32];
-        let p_wave = ctx.create_periodic_wave(real, imag).unwrap();
+        let (mut real, mut imag) = split_complex_vec(&wavelet.fseries);
+        let p_wave = ctx.create_periodic_wave(real.as_mut_slice(), imag.as_mut_slice()).unwrap();
         osc.set_periodic_wave(&p_wave);
 
         //start osc
@@ -165,7 +174,6 @@ impl WaveSynth{
         return Ok(self.samplerate); //note only next note will be at requested volume
     }
 
-    
     #[wasm_bindgen]
     pub fn get_fft_len(&self) -> Result<f32, JsValue>{
         return Ok(SAMPLESIZE as f32); //note only next note will be at requested volume
@@ -194,12 +202,7 @@ impl WaveSynth{
     }
 
     fn update_osc(&mut self){
-        let mut re_buff = vec![0f32; self.wavelet.fseries.len()];
-        let mut im_buff = vec![0f32; self.wavelet.fseries.len()];
-        for i in 0usize..self.wavelet.fseries.len(){
-            re_buff[i] = self.wavelet.fseries[i].re;
-            im_buff[i] = self.wavelet.fseries[i].im;
-        }
+        let (mut re_buff, mut im_buff) = split_complex_vec(&self.wavelet.fseries);
         let per_wave = self.ctx.create_periodic_wave(re_buff.as_mut_slice(), im_buff.as_mut_slice()).unwrap();
         self.osc.set_periodic_wave(&per_wave);
     }

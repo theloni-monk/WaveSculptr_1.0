@@ -1,0 +1,13 @@
+{
+"compilerOptions": {
+    "target": "es5",
+    "module": "esnext",
+    "moduleResolution": "node",
+    "importHelpers": true,
+    "allowJs": false,
+    "outDir": "./js",
+    "jsx": "react"
+},
+"include": ["./ts/*"],
+"exclude": ["./pkg/*"]
+}

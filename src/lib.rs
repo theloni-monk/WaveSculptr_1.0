@@ -4,23 +4,8 @@ use web_sys::{AudioContext};
 use js_sys::{Float32Array};
 use rustfft::{Fft, FftPlanner, FftDirection, num_complex::Complex};
 
-//  Tests funcs
-// Import the `window.alert` function from the Web.
-#[wasm_bindgen]
-extern "C"{
-    fn alert(s: &str);
-}
-// Export a `greet` function from Rust to JavaScript
-#[wasm_bindgen]
-pub fn greet(name: &str) {
-    alert(&format!("Hello, {}!", name));
-}
-
-//our stuff:
 //util
-pub fn midi_to_freq(note: u8) -> f32 {
-    27.5 * 2f32.powf((note as f32 - 21.0) / 12.0)
-}
+pub fn midi_to_freq(note: u8) -> f32 { 27.5 * 2f32.powf((note as f32 - 21.0) / 12.0) }
 const FFTSIZE:usize = 256;
 const SAMPLESIZE:usize = 128;
 
@@ -124,8 +109,8 @@ impl WaveSynth{
         //init js-bound stuff
         let curr_note = 0u8;
         osc.frequency().set_value(440f32); // A4 note
-        let gain_val = 0.5f32;
-        gain_node.gain().set_value(gain_val); // starts at 50% vol for debug
+        let gain_val = 1f32; //start at ful vol
+        gain_node.gain().set_value(gain_val); 
         
         //set initial periodic wave with fseries of simple sin wave
         let (mut real, mut imag) = split_complex_vec(&wavelet.fseries);
@@ -150,6 +135,7 @@ impl WaveSynth{
         )
     }
 
+    //TODO: ramp gain to remove clicking
     #[wasm_bindgen]
     pub fn start_note(&mut self, note:u8){
         self.curr_note = note;
@@ -164,26 +150,20 @@ impl WaveSynth{
         //just turn off gain
     }
 
-    #[wasm_bindgen]
-    pub fn set_gain_node(&mut self, g:f32){
-        self.gain_val = g; //note only next note will be at requested volume
-    }
+    #[wasm_bindgen]  //note only next note will be at requested volume
+    pub fn set_gain_node(&mut self, g:f32){ self.gain_val = g; }
 
     #[wasm_bindgen]
-    pub fn get_sample_rate(&self) -> Result<f32, JsValue>{
-        return Ok(self.samplerate); //note only next note will be at requested volume
-    }
+    pub fn get_sample_rate(&self) -> Result<f32, JsValue>{ Ok(self.samplerate) }
 
     #[wasm_bindgen]
-    pub fn get_fft_len(&self) -> Result<f32, JsValue>{
-        return Ok(SAMPLESIZE as f32); //note only next note will be at requested volume
-    }
+    pub fn get_fft_len(&self) -> Result<f32, JsValue>{ Ok(SAMPLESIZE as f32) }
 
     #[wasm_bindgen]
     pub fn get_tspace(&self) -> Result<Float32Array,JsValue>{
         let buff: &mut [f32; FFTSIZE] = &mut [0f32; FFTSIZE];
         self.anal.get_float_time_domain_data(buff);
-        let js_buff = Float32Array::new(&JsValue::from_f64(FFTSIZE as f64)); //this is hacky but fuck it
+        let js_buff = Float32Array::new(&JsValue::from_f64(FFTSIZE as f64)); //this is hacky
         js_buff.copy_from(buff);
         return Ok(
             js_buff
@@ -194,7 +174,29 @@ impl WaveSynth{
     pub fn get_fspace(&self) -> Result<Float32Array,JsValue>{
         let buff: &mut [f32; SAMPLESIZE] =  &mut [0f32; SAMPLESIZE];
         self.anal.get_float_frequency_data(buff);
-        let js_buff = Float32Array::new(&JsValue::from_f64(SAMPLESIZE as f64)); //this is hacky but fuck it
+        let js_buff = Float32Array::new(&JsValue::from_f64(SAMPLESIZE as f64)); //this is hacky
+        js_buff.copy_from(buff);
+        return Ok(
+            js_buff
+        );
+    }
+
+    #[wasm_bindgen]
+    pub fn get_wave_tspace(&self) -> Result<Float32Array,JsValue>{
+        let (mut re_buff, _im_buff) = split_complex_vec(&self.wavelet.amp);
+        let js_buff = Float32Array::new(&JsValue::from_f64(FFTSIZE as f64)); //this is hacky
+        js_buff.copy_from(re_buff.as_mut_slice());
+        return Ok(
+            js_buff
+        );
+    }
+
+    #[wasm_bindgen]
+    pub fn get_wave_fspace(&self) -> Result<Float32Array,JsValue>{
+        let buff: &mut [f32; SAMPLESIZE] =  &mut [0f32; SAMPLESIZE];
+        //WRITEME: convert wavelet fseries to float frequency data
+        self.anal.get_float_frequency_data(buff); // for now just use anal node
+        let js_buff = Float32Array::new(&JsValue::from_f64(SAMPLESIZE as f64)); //this is hacky
         js_buff.copy_from(buff);
         return Ok(
             js_buff
@@ -225,7 +227,7 @@ impl WaveSynth{
         self.update_osc();
     }
 
-    //@param: js_re_buff: Float32Array in Js of len FFTSIZE, js_im_buff: Float32Array in Js of len FFTSIZE
+    //@param: js_re_buff, js_im_buff: Float32Array in Js of len FFTSIZE
     #[wasm_bindgen]
     pub fn set_wave_from_fseries(&mut self, js_re_buff: Vec<f32>, js_im_buff: Vec<f32>){
         assert_eq![js_re_buff.len(), FFTSIZE];
@@ -244,7 +246,7 @@ impl WaveSynth{
         self.update_osc();
     }
 
-    
+
 }
 
 

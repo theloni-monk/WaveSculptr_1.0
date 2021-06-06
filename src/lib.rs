@@ -207,6 +207,7 @@ impl WaveSynth{
         let (mut re_buff, mut im_buff) = split_complex_vec(&self.wavelet.fseries);
         let per_wave = self.ctx.create_periodic_wave(re_buff.as_mut_slice(), im_buff.as_mut_slice()).unwrap();
         self.osc.set_periodic_wave(&per_wave);
+        console::log_1(&JsValue::from_str("rust updated osc"));
     }
 
     //@param: js_buff: Float32Array in Js of len SAMPLESIZE
@@ -245,10 +246,24 @@ impl WaveSynth{
         self.wavelet = wave;
         self.update_osc();
     }
-
-
 }
 
+#[wasm_bindgen]
+pub fn set_wave_from_amp_external(syn: &mut WaveSynth, js_buff: Vec<f32>){
+    assert_eq![js_buff.len(), FFTSIZE];
+    let mut wave_buff = vec![Complex{re: 0f32,im: 0f32}; FFTSIZE];
+    for i in 0usize..js_buff.len(){
+        wave_buff[i] = Complex{re: js_buff[i], im: 0f32};
+    }
+    let mut wave = WaveForm{
+        fseries: vec![Complex{re: 0f32,im: 0f32}; SAMPLESIZE],
+        amp: wave_buff
+    };
+    let fft = syn.fft_planner.plan_fft_forward(SAMPLESIZE);
+    wave.update_fseries(fft.as_ref());
+    syn.wavelet = wave;
+    syn.update_osc();
+}
 
 // entry point
 #[wasm_bindgen(start)]

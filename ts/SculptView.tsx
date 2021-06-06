@@ -7,7 +7,7 @@ const deepcopy = buff => buff.map(el => el);
 //hackky
 var ctx: CanvasRenderingContext2D;
 var cv: HTMLCanvasElement;
-const SculptView = (props: { synth: WaveSynth }) => {
+const SculptView = (props: { wasmInstance: any, synth: WaveSynth }) => {
 
   const [synth, setSynth] = useState(null); //schrodingers synthesizer
   const [waveBuff, setWaveBuff] = useState(null);
@@ -29,6 +29,7 @@ const SculptView = (props: { synth: WaveSynth }) => {
   }, [synth]);
   useEffect(()=>{
     drawWave();
+    Promise.resolve().then(()=>props.wasmInstance.set_wave_from_amp_external(synth, waveBuff));
   }, [waveBuff]);
 
   //canvas mapped to x: 0 -> len(waveData), y: -1 -> 1
@@ -62,7 +63,7 @@ const SculptView = (props: { synth: WaveSynth }) => {
     newFloat = _.clamp(newFloat,-1,1);
     waveData[floatIndex] = newFloat; //FIXME: when setting new float lerp those around it to avoid spikes 
     setWaveBuff(waveData);
-    //synth.set_wave_from_amp(waveData);
+    
     drawWave();
   }
   const mouseDown = (evt) => {

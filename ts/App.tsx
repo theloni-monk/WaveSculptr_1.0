@@ -55,6 +55,7 @@ const App = () => {
                     keyboardShortcuts={keyboardShortcuts}
                 />
                 <SculptView
+                    wasmInstance = {wasm}
                     synth={synth}
                 />
             </div>

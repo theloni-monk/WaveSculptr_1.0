@@ -9,7 +9,7 @@ var samplerange: Float32Array;
 
 const App = () => {
     const firstNote = MidiNumbers.fromNote('c4');
-    const lastNote = MidiNumbers.fromNote('c5');
+    const lastNote = MidiNumbers.fromNote('b4');
     const keyboardShortcuts = KeyboardShortcuts.create({
         firstNote: firstNote,
         lastNote: lastNote,
@@ -30,6 +30,7 @@ const App = () => {
         )
     }, [wasm]);
     useEffect(() => {
+        //I wrap this in an empty promise so React can update state without hanging on it
         Promise.resolve().then(() => {
             let sampleRate = synth.get_sample_rate();
             let fftLen = synth.get_fft_len();
@@ -38,7 +39,7 @@ const App = () => {
                 samplerange[i] = (sampleRate / 2) * i / fftLen;
             }
             //plays for 100milis on startup 
-            setTimeout(() => synth.end_note(), 100);
+            setTimeout(() => synth.end_note(71), 100); //end A note
         }
         )
     }, [synth]);
@@ -49,8 +50,8 @@ const App = () => {
             <div style={{ display: 'grid', gridTemplateColumns:'70% 30%'}}>
                 <Piano
                     noteRange={{ first: firstNote, last: lastNote }}
-                    playNote={(midiNumber) => { if (synth) synth.start_note(midiNumber); }}
-                    stopNote={(midiNumber) => { if (synth) synth.end_note(); }}
+                    playNote={(midiNumber) => { if (synth) synth.start_note(midiNumber) }}
+                    stopNote={(midiNumber) => { if (synth) synth.end_note(midiNumber) }}
                     width={800}
                     keyboardShortcuts={keyboardShortcuts}
                 />

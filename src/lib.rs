@@ -40,7 +40,6 @@ impl WaveForm{
 
         fft.process(&mut buff); //process in place
         let fseries = buff;
-
         return 
         WaveForm{
             fseries,
@@ -75,6 +74,7 @@ pub struct WaveSynth {
     ctx: AudioContext,
     samplerate: f32,
     osc: web_sys::OscillatorNode,
+    per_wave: web_sys::PeriodicWave,
     gain_node: web_sys::GainNode,
     anal: web_sys::AnalyserNode,
     // our stuff
@@ -107,15 +107,15 @@ impl WaveSynth{
         anal.set_fft_size(FFTSIZE as u32);
 
         //init js-bound stuff
-        let curr_note = 0u8;
-        osc.frequency().set_value(440f32); // A4 note
+        let curr_note = 71u8; //A4
+        osc.frequency().set_value(midi_to_freq(curr_note)); 
         let gain_val = 1f32; //start at ful vol
         gain_node.gain().set_value(gain_val); 
         
         //set initial periodic wave with fseries of simple sin wave
         let (mut real, mut imag) = split_complex_vec(&wavelet.fseries);
-        let p_wave = ctx.create_periodic_wave(real.as_mut_slice(), imag.as_mut_slice()).unwrap();
-        osc.set_periodic_wave(&p_wave);
+        let per_wave = ctx.create_periodic_wave(real.as_mut_slice(), imag.as_mut_slice()).unwrap();
+        osc.set_periodic_wave(&per_wave);
 
         //start osc
         osc.start()?;
@@ -125,6 +125,7 @@ impl WaveSynth{
                 ctx,
                 samplerate,
                 osc,
+                per_wave,
                 gain_node,   
                 anal,
                 wavelet,
@@ -135,7 +136,8 @@ impl WaveSynth{
         )
     }
 
-    //TODO: ramp gain to remove clicking
+    //FIXME: ramp gain to remove clicking
+    //TODO: ramp frequency based on glide parameter
     #[wasm_bindgen]
     pub fn start_note(&mut self, note:u8){
         self.curr_note = note;
@@ -145,7 +147,8 @@ impl WaveSynth{
     }
 
     #[wasm_bindgen]
-    pub fn end_note(&mut self){
+    pub fn end_note(&mut self, note: u8){
+        if note != self.curr_note {return};
         self.gain_node.gain().set_value(0f32);
         //just turn off gain
     }
@@ -205,63 +208,24 @@ impl WaveSynth{
 
     fn update_osc(&mut self){
         let (mut re_buff, mut im_buff) = split_complex_vec(&self.wavelet.fseries);
-        let per_wave = self.ctx.create_periodic_wave(re_buff.as_mut_slice(), im_buff.as_mut_slice()).unwrap();
-        self.osc.set_periodic_wave(&per_wave);
+        self.per_wave = self.ctx.create_periodic_wave(re_buff.as_mut_slice(), im_buff.as_mut_slice()).unwrap();
+        self.osc.set_periodic_wave(&self.per_wave);
         console::log_1(&JsValue::from_str("rust updated osc"));
     }
 
-    //@param: js_buff: Float32Array in Js of len SAMPLESIZE
-    #[wasm_bindgen]
-    pub fn set_wave_from_amp(&mut self, js_buff: Vec<f32>){
-        assert_eq![js_buff.len(), SAMPLESIZE];
-        let mut wave_buff = vec![Complex{re: 0f32,im: 0f32}; SAMPLESIZE];
-        for i in 0usize..js_buff.len(){
-            wave_buff[i] = Complex{re: js_buff[i], im: 0f32};
-        }
-        let mut wave = WaveForm{
-            fseries: vec![Complex{re: 0f32,im: 0f32}; FFTSIZE],
-            amp: wave_buff
-        };
-        let fft = self.fft_planner.plan_fft_forward(FFTSIZE);
-        wave.update_fseries(fft.as_ref());
-        self.wavelet = wave;
-        self.update_osc();
-    }
-
-    //@param: js_re_buff, js_im_buff: Float32Array in Js of len FFTSIZE
-    #[wasm_bindgen]
-    pub fn set_wave_from_fseries(&mut self, js_re_buff: Vec<f32>, js_im_buff: Vec<f32>){
-        assert_eq![js_re_buff.len(), FFTSIZE];
-        assert_eq![js_im_buff.len(), FFTSIZE];
-        let mut wave_buff = vec![Complex{re: 0f32,im: 0f32}; FFTSIZE];
-        for i in 0usize..js_re_buff.len(){
-            wave_buff[i] = Complex{re: js_re_buff[i], im: js_im_buff[i]};
-        }
-        let mut wave = WaveForm{
-            fseries: wave_buff,
-            amp: vec![Complex{re: 0f32,im: 0f32}; SAMPLESIZE]
-        };
-        let fft = self.fft_planner.plan_fft_inverse(FFTSIZE);
-        wave.update_amp(fft.as_ref());
-        self.wavelet = wave;
-        self.update_osc();
-    }
 }
 
+// we have to have setters as external functions because js is already borrowing the synth and the synth cant borrow itself from that
+// but js can pass its mutable borrow to an external function
 #[wasm_bindgen]
 pub fn set_wave_from_amp_external(syn: &mut WaveSynth, js_buff: Vec<f32>){
     assert_eq![js_buff.len(), FFTSIZE];
-    let mut wave_buff = vec![Complex{re: 0f32,im: 0f32}; FFTSIZE];
     for i in 0usize..js_buff.len(){
-        wave_buff[i] = Complex{re: js_buff[i], im: 0f32};
+        syn.wavelet.amp[i] = Complex{re: js_buff[i], im: 0f32};
     }
-    let mut wave = WaveForm{
-        fseries: vec![Complex{re: 0f32,im: 0f32}; SAMPLESIZE],
-        amp: wave_buff
-    };
-    let fft = syn.fft_planner.plan_fft_forward(SAMPLESIZE);
-    wave.update_fseries(fft.as_ref());
-    syn.wavelet = wave;
+    let fft = syn.fft_planner.plan_fft_forward(FFTSIZE);
+    syn.wavelet.update_fseries(fft.as_ref());
+    std::mem::forget(fft);
     syn.update_osc();
 }
 
@@ -272,7 +236,7 @@ pub fn main_js() -> Result<(), JsValue> {
     // It's disabled in release mode so it doesn't bloat up the file size.
     #[cfg(debug_assertions)]
     console_error_panic_hook::set_once();
-    // Your code goes here!
+
     console::log_1(&JsValue::from_str("rust linked successfully"));
 
     return Ok(());

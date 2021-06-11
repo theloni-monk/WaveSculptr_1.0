@@ -103,6 +103,7 @@ impl WaveSynth{
         //init fft lib stuff
         let mut fft_planner = FftPlanner::new();
         let fft = fft_planner.plan_fft_forward(FFTSIZE);
+        //FIXME: initial wavelet getting overwritten
         let wavelet = WaveForm::new(fft.as_ref(), FFTSIZE);
         anal.set_fft_size(FFTSIZE as u32);
 
@@ -173,6 +174,7 @@ impl WaveSynth{
         );
     }
 
+    //real time 
     #[wasm_bindgen]
     pub fn get_fspace(&self) -> Result<Float32Array,JsValue>{
         let buff: &mut [f32; SAMPLESIZE] =  &mut [0f32; SAMPLESIZE];
@@ -184,8 +186,10 @@ impl WaveSynth{
         );
     }
 
+    //real time, dependent on note etc.
     #[wasm_bindgen]
     pub fn get_wave_tspace(&self) -> Result<Float32Array,JsValue>{
+        //re part of wavelet.amp is the time domain so just return that
         let (mut re_buff, _im_buff) = split_complex_vec(&self.wavelet.amp);
         let js_buff = Float32Array::new(&JsValue::from_f64(FFTSIZE as f64)); //this is hacky
         js_buff.copy_from(re_buff.as_mut_slice());
@@ -194,13 +198,18 @@ impl WaveSynth{
         );
     }
 
+    //FIXME: outputing same number 
     #[wasm_bindgen]
     pub fn get_wave_fspace(&self) -> Result<Float32Array,JsValue>{
-        let buff: &mut [f32; SAMPLESIZE] =  &mut [0f32; SAMPLESIZE];
-        //WRITEME: convert wavelet fseries to float frequency data
-        self.anal.get_float_frequency_data(buff); // for now just use anal node
-        let js_buff = Float32Array::new(&JsValue::from_f64(SAMPLESIZE as f64)); //this is hacky
-        js_buff.copy_from(buff);
+        //take real part of fseries
+        let (re, _im) = split_complex_vec(&self.wavelet.fseries); 
+        // float out = re[p_0*e^-i(wt-kx)] = A*cos(wt -kx - phi_0)
+        // freq ~= invcos(out / A)
+        // A = 1 in our case so
+        let mut freqs:Vec<f32> = re;//.iter().map(|num| num.acos()).collect();
+        // and send to js
+        let js_buff = Float32Array::new(&JsValue::from_f64(FFTSIZE as f64)); //this is hacky
+        js_buff.copy_from(freqs.as_mut_slice());
         return Ok(
             js_buff
         );
@@ -225,6 +234,18 @@ pub fn set_wave_from_amp_external(syn: &mut WaveSynth, js_buff: Vec<f32>){
     }
     let fft = syn.fft_planner.plan_fft_forward(FFTSIZE);
     syn.wavelet.update_fseries(fft.as_ref());
+    std::mem::forget(fft);
+    syn.update_osc();
+}
+#[wasm_bindgen]
+pub fn set_wave_from_freq_external(syn: &mut WaveSynth, js_buff: Vec<f32>){
+    //FIXME: set wave from freq horribly broken
+    assert_eq![js_buff.len(), FFTSIZE];
+    for i in 0usize..js_buff.len(){
+        syn.wavelet.fseries[i] = Complex{re: js_buff[i], im: 0f32};
+    }
+    let fft = syn.fft_planner.plan_fft_inverse(FFTSIZE);
+    syn.wavelet.update_amp(fft.as_ref());
     std::mem::forget(fft);
     syn.update_osc();
 }

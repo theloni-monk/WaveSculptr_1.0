@@ -3,6 +3,7 @@ import { Piano, KeyboardShortcuts, MidiNumbers } from 'react-piano';
 import Plot from 'react-plotly.js';
 import 'react-piano/dist/styles.css'; //TODO: write css to make pretty
 import SculptView from './SculptView';
+import AnalView from './AnalView';
 import { WaveSynth } from '../pkg/index'; //for ts annotations
 const wasmLoader = import('../pkg/index');
 var samplerange: Float32Array;
@@ -18,7 +19,6 @@ const App = () => {
 
     const [wasm, loadWasm] = useState(null);
     const [synth, setSynth]: [WaveSynth, any] = useState(null);
-    const [fdata, setFData] = useState(new Float32Array());
 
     useEffect(async () => {
         const w = await wasmLoader;
@@ -47,7 +47,7 @@ const App = () => {
     return (
         <div>
             <h1>WaveSculptor_1.0</h1>
-            <div style={{ display: 'grid', gridTemplateColumns:'70% 30%'}}>
+            <div style={{ display: 'grid', gridTemplateColumns:'60% 40%'}}>
                 <Piano
                     noteRange={{ first: firstNote, last: lastNote }}
                     playNote={(midiNumber) => { if (synth) synth.start_note(midiNumber) }}
@@ -55,29 +55,17 @@ const App = () => {
                     width={800}
                     keyboardShortcuts={keyboardShortcuts}
                 />
+                <AnalView 
+                        wasmInstance = {wasm}
+                        synth = {synth}
+                    />
                 <SculptView
                     wasmInstance = {wasm}
                     synth={synth}
                 />
             </div>
             <div style={{ display: 'flex' }}>
-                <button onClick={() => {
-                    if (synth) {
-                        setFData(synth.get_fspace());
-                    }
-                }}>get spectrum</button>
-                <Plot
-                    data={[
-                        {
-                            x: samplerange,
-                            y: fdata,
-                            type: 'scatter',
-                            mode: 'lines+markers',
-                            marker: { color: 'red' },
-                        }
-                    ]}
-                    layout={{ width: 600, height: 240, title: 'f domain plot' }}
-                />
+                
             </div>
         </div>
     );

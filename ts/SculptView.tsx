@@ -50,10 +50,10 @@ const SculptView = (props: { wasmInstance: any, synth: WaveSynth }) => {
     ctx.stroke();
   }
 
-  //TODO: migrate to webworker maybe
   const [sculpting, setSculpting] = useState(false);
   const mouseMove = (evt: MouseEvent) => {
     if (!sculpting) return;
+    //FIXME: mouse loc is broken again
     let mx = evt.clientX - cv.offsetLeft;
     let my = evt.clientY - cv.offsetHeight;
     let waveData = deepcopy(waveBuff);
@@ -64,7 +64,7 @@ const SculptView = (props: { wasmInstance: any, synth: WaveSynth }) => {
     //lerp along a slope datapoints around the index to account for mousemove event not polling for every pixel
     let lerpRange = 3;
     let startI = _.clamp(floatIndex - lerpRange, 0, waveData.length);
-    let endI = _.clamp(floatIndex + lerpRange, waveData.length);
+    let endI = _.clamp(floatIndex + lerpRange, waveData.length - 1);
     let slopeStrength = 0.2;
     for (let i = startI; i < endI; i++) {
       let range = endI - startI;
@@ -74,7 +74,7 @@ const SculptView = (props: { wasmInstance: any, synth: WaveSynth }) => {
     }
     setWaveBuff(waveData);
   }
-  
+
   const mouseDown = (evt) => {
     setSculpting(true);
   }

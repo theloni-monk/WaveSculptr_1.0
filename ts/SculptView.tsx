@@ -55,7 +55,7 @@ const SculptView = (props: { wasmInstance: any, synth: WaveSynth }) => {
     if (!sculpting) return;
     //FIXME: mouse loc is broken again
     let mx = evt.clientX - cv.offsetLeft;
-    let my = evt.clientY - cv.offsetHeight;
+    let my = evt.clientY - cv.offsetTop;
     let waveData = deepcopy(waveBuff);
     let floatIndex = Math.trunc((mx / cv.clientWidth) * waveData.length); //where we are in array
     let newFloat = 2 * ((cv.clientHeight - my) / cv.clientHeight) - 1 ; //remap to -1 -> 1

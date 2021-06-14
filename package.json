@@ -1,7 +1,7 @@
 {
   "author": "theo",
   "name": "wavescultr",
-  
+  "homepage": "theloni-monk.github.io/WaveSculptr_1.0",
   "version": "0.1.0",
   "scripts": {
     "build": "rimraf dist pkg && webpack",

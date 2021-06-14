@@ -13,6 +13,7 @@ function ignoreErrors(cb:Function){
 const AnalView = (props: { wasmInstance: any, synth: WaveSynth }) => {
 
   const [synth, setSynth] = useState(null);
+  //TODO: optimize with sharedarraybuffer
   const [analBuff, setAnalBuff]:[Float32Array, any] = useState(null);
   const [doneLoading, setDoneLoading] = useState(false);
   let canvasRef = useRef();
@@ -63,7 +64,9 @@ const AnalView = (props: { wasmInstance: any, synth: WaveSynth }) => {
   }, [synth]);
   useEffect(() => {
     if(analBuff == null) return;
-    if(doneLoading) drawAnal(); 
+    if(doneLoading) {
+      drawAnal(); 
+    }
     else Promise.resolve().then(() => setDoneLoading(true));
   }, [analBuff])
   useEffect(() => {
@@ -77,7 +80,7 @@ const AnalView = (props: { wasmInstance: any, synth: WaveSynth }) => {
     <div>
       <h2>Spectrogram</h2>
       {!doneLoading ? 'Loading...' : ''}
-      <div id='fcv-container' >
+      <div id='cv-container' >
         <canvas ref={canvasRef} id='fcv' />
       </div>
     </div>

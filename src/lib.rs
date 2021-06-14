@@ -77,6 +77,7 @@ pub struct WaveSynth {
     per_wave: web_sys::PeriodicWave,
     gain_node: web_sys::GainNode,
     anal: web_sys::AnalyserNode,
+    anal_buff:[f32; SAMPLESIZE],
     // our stuff
     gain_val: f32,
     wavelet: WaveForm,
@@ -120,6 +121,8 @@ impl WaveSynth{
 
         //start osc
         osc.start()?;
+
+        let anal_buff =  [0f32; SAMPLESIZE];
         
         return Ok(
             WaveSynth{
@@ -129,6 +132,7 @@ impl WaveSynth{
                 per_wave,
                 gain_node,   
                 anal,
+                anal_buff,
                 wavelet,
                 gain_val,
                 curr_note,
@@ -176,11 +180,10 @@ impl WaveSynth{
 
     //real time 
     #[wasm_bindgen]
-    pub fn get_fspace(&self) -> Result<Float32Array,JsValue>{
-        let buff =  &mut [0f32; SAMPLESIZE];
-        self.anal.get_float_frequency_data(buff);
+    pub fn get_fspace(&mut self) -> Result<Float32Array,JsValue>{
+        self.anal.get_float_frequency_data(&mut self.anal_buff);
         let js_buff = Float32Array::new_with_length(SAMPLESIZE as u32); //this is hacky
-        js_buff.copy_from(buff);
+        js_buff.copy_from(&mut self.anal_buff);
         return Ok(
             js_buff
         );

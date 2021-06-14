@@ -7,8 +7,8 @@ import { WaveSynth } from '../pkg';
 const SculptView = (props: { wasmInstance: any, synth: WaveSynth }) => {
 
   const [synth, setSynth] = useState(null);
+  //TODO: optimize with sharedarraybuffer
   const [waveBuff, setWaveBuff] = useState(null);
-  const [doneLoading, setDoneLoading] = useState(false);
   let canvasRef = useRef();
 
   useEffect(() => {

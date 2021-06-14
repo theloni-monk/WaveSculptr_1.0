@@ -10,7 +10,7 @@ var samplerange: Float32Array;
 
 const App = () => {
     const firstNote = MidiNumbers.fromNote('c4');
-    const lastNote = MidiNumbers.fromNote('b4');
+    const lastNote = MidiNumbers.fromNote('c5');
     const keyboardShortcuts = KeyboardShortcuts.create({
         firstNote: firstNote,
         lastNote: lastNote,
@@ -48,27 +48,25 @@ const App = () => {
     return (
         <div>
             <h1>WaveSculptor_1.0</h1>
-            <div style={{ display: 'grid', gridTemplateColumns:'100%'}}>
+            <div style={{ display: 'flex'}}>
                 
                 <AnalView 
                         wasmInstance = {wasm}
                         synth = {synth}
                     />
-                <Piano
+                    
+                <SculptView
+                    wasmInstance = {wasm}
+                    synth={synth}
+                />
+            </div>
+            <Piano
                     noteRange={{ first: firstNote, last: lastNote }}
                     playNote={(midiNumber) => { if (synth) synth.start_note(midiNumber) }}
                     stopNote={(midiNumber) => { if (synth) synth.end_note(midiNumber) }}
                     width={800}
                     keyboardShortcuts={keyboardShortcuts}
                 />
-                <SculptView
-                    wasmInstance = {wasm}
-                    synth={synth}
-                />
-            </div>
-            <div style={{ display: 'flex' }}>
-                
-            </div>
         </div>
     );
 }

@@ -1,20 +1,16 @@
 import * as _ from 'lodash';
-import React, { useState, useLayoutEffect, useEffect } from 'react';
+import React, { useState, useLayoutEffect, useEffect,useRef } from 'react';
 import { WaveSynth } from '../pkg';
 
 
-//these rlly should be inside the function but whatever
-var ctx: CanvasRenderingContext2D;
-var cv: HTMLCanvasElement;
+
 const SculptView = (props: { wasmInstance: any, synth: WaveSynth }) => {
 
-  const [synth, setSynth] = useState(null); //schrodingers synthesizer
+  const [synth, setSynth] = useState(null);
   const [waveBuff, setWaveBuff] = useState(null);
+  const [doneLoading, setDoneLoading] = useState(false);
+  let canvasRef = useRef();
 
-  useLayoutEffect(() => {
-    cv = (document.getElementById('cv') as HTMLCanvasElement)
-    ctx = cv.getContext("2d");
-  }, []);
   useEffect(() => {
     if (props.synth && (props.synth !== synth)) {
       setSynth(props.synth);
@@ -22,17 +18,19 @@ const SculptView = (props: { wasmInstance: any, synth: WaveSynth }) => {
   }, [props]);
   useEffect(() => {
     //I wrap this in an empty promise so React can update state without hanging on it
-    Promise.resolve().then(() => setWaveBuff(synth.get_wave_tspace()));
+    Promise.resolve().then(() => ignoreErrors(()=>setWaveBuff(synth.get_wave_tspace())));
   }, [synth]);
   useEffect(() => {
     drawWave();
     //I wrap this in an empty promise so React can update state without hanging on it
-    Promise.resolve().then(() => props.wasmInstance.set_wave_from_amp_external(synth, waveBuff));
+    Promise.resolve().then(() => ignoreErrors(()=>props.wasmInstance.set_wave_from_amp_external(synth, waveBuff)));
   }, [waveBuff]);
 
   //canvas mapped to x: 0 -> len(waveData), y: -1 -> 1
   const drawWave = () => {
-    if (synth) { } else return;
+    if (!synth) return; 
+    let cv: HTMLCanvasElement = canvasRef.current;
+    let ctx = cv.getContext('2d');
     let step = cv.clientWidth / waveBuff.length;
     let heightMult = cv.clientHeight / 2;
     ctx.fillStyle = "#050505";
@@ -51,16 +49,17 @@ const SculptView = (props: { wasmInstance: any, synth: WaveSynth }) => {
   }
 
   const [sculpting, setSculpting] = useState(false);
-  const mouseMove = (evt: MouseEvent) => {
+  const mouseMove = (evt: MouseEvent) => { //FIXME: mouse loc is broken again --account for scroll
     if (!sculpting) return;
-    //FIXME: mouse loc is broken again
+    let cv: HTMLCanvasElement = canvasRef.current;
     let mx = evt.clientX - cv.offsetLeft;
     let my = evt.clientY - cv.offsetTop;
     let waveData = deepcopy(waveBuff);
+
     let floatIndex = Math.trunc((mx / cv.clientWidth) * waveData.length); //where we are in array
-    let newFloat = 2 * ((cv.clientHeight - my) / cv.clientHeight) - 1 ; //remap to -1 -> 1
-    newFloat*=1.2;  //acount for 10% margin in the canvas
-    
+    let newFloat = 2 * ((cv.clientHeight - my) / cv.clientHeight) - 1; //remap to -1 -> 1
+    newFloat *= 1.2;  //acount for 10% margin in the canvas
+
     //lerp along a slope datapoints around the index to account for mousemove event not polling for every pixel
     let lerpRange = 3;
     let startI = _.clamp(floatIndex - lerpRange, 0, waveData.length);
@@ -69,8 +68,8 @@ const SculptView = (props: { wasmInstance: any, synth: WaveSynth }) => {
     for (let i = startI; i < endI; i++) {
       let range = endI - startI;
       let slope = (waveBuff[endI] - waveBuff[startI]) / range;
-      let distance = i-floatIndex;
-      waveData[i] = _.clamp(newFloat + (slope*distance*slopeStrength), -1, 1);
+      let distance = i - floatIndex;
+      waveData[i] = _.clamp(newFloat + (slope * distance * slopeStrength), -1, 1);
     }
     setWaveBuff(waveData);
   }
@@ -86,7 +85,7 @@ const SculptView = (props: { wasmInstance: any, synth: WaveSynth }) => {
     <div>
       <h2>Working Waveform:</h2>
       <div id='cv-container' >
-        <canvas id='cv' onMouseMove={mouseMove} onMouseDown={mouseDown} onMouseUp={mouseUp} onMouseOut={mouseUp}/>
+        <canvas id='cv' ref={canvasRef} onMouseMove={mouseMove} onMouseDown={mouseDown} onMouseUp={mouseUp} onMouseOut={mouseUp} />
       </div>
     </div>
   );
@@ -95,6 +94,13 @@ const SculptView = (props: { wasmInstance: any, synth: WaveSynth }) => {
 
 /**---------UTILS---------**/
 //cheap way to deepcopy in js
-const deepcopy = (buff:Float32Array):Float32Array => buff.map(el => el);
+function deepcopy(buff: Float32Array){return buff.map(el => el)};
+
+function ignoreErrors(cb:Function){
+  try{
+    cb();
+  }
+  catch(e){} //drop errors
+}
 
 export default SculptView;

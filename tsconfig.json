@@ -6,7 +6,8 @@
     "importHelpers": true,
     "allowJs": false,
     "outDir": "./js",
-    "jsx": "react"
+    "jsx": "react",
+    "sourceMap": true
 },
 "include": ["./ts/*"],
 "exclude": ["./pkg/*"]

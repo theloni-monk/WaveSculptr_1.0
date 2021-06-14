@@ -96,9 +96,9 @@ impl WaveSynth{
         let gain_node = ctx.create_gain().unwrap();
         let anal = ctx.create_analyser().unwrap();
         //link nodes
-        osc.connect_with_audio_node(&anal)?; //osc to anal
-        anal.connect_with_audio_node(&gain_node)?; //anal to gain
-        gain_node.connect_with_audio_node(&ctx.destination())?; //connect gain to speakers
+        osc.connect_with_audio_node(&gain_node)?; //osc to gain
+        gain_node.connect_with_audio_node(&anal)?; //connect gain to anal
+        anal.connect_with_audio_node(&ctx.destination())?; //anal to speakers
 
         //init fft lib stuff
         let mut fft_planner = FftPlanner::new();
@@ -177,9 +177,9 @@ impl WaveSynth{
     //real time 
     #[wasm_bindgen]
     pub fn get_fspace(&self) -> Result<Float32Array,JsValue>{
-        let buff: &mut [f32; SAMPLESIZE] =  &mut [0f32; SAMPLESIZE];
+        let buff =  &mut [0f32; SAMPLESIZE];
         self.anal.get_float_frequency_data(buff);
-        let js_buff = Float32Array::new(&JsValue::from_f64(SAMPLESIZE as f64)); //this is hacky
+        let js_buff = Float32Array::new_with_length(SAMPLESIZE as u32); //this is hacky
         js_buff.copy_from(buff);
         return Ok(
             js_buff
@@ -219,7 +219,7 @@ impl WaveSynth{
         let (mut re_buff, mut im_buff) = split_complex_vec(&self.wavelet.fseries);
         self.per_wave = self.ctx.create_periodic_wave(re_buff.as_mut_slice(), im_buff.as_mut_slice()).unwrap();
         self.osc.set_periodic_wave(&self.per_wave);
-        console::log_1(&JsValue::from_str("rust updated osc"));
+        //console::log_1(&JsValue::from_str("rust updated osc"));
     }
 
 }

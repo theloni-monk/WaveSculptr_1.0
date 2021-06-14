@@ -1,32 +1,25 @@
 import * as _ from 'lodash';
-import React, { useState, useLayoutEffect, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { WaveSynth } from '../pkg';
 
-
+//TODO: export reused func to utils
+function ignoreErrors(cb:Function){
+  try{
+    cb();
+  }
+  catch(e){} //drop errors
+}
 //these rlly should be inside the function but whatever
-var ctx: CanvasRenderingContext2D;
-var cv: HTMLCanvasElement;
 const AnalView = (props: { wasmInstance: any, synth: WaveSynth }) => {
 
-  const [synth, setSynth] = useState(null); //schrodingers synthesizer
-  const [analBuff, setAnalBuff] = useState(null);
+  const [synth, setSynth] = useState(null);
+  const [analBuff, setAnalBuff]:[Float32Array, any] = useState(null);
+  const [doneLoading, setDoneLoading] = useState(false);
+  let canvasRef = useRef();
 
-  useLayoutEffect(() => {
-    cv = (document.getElementById('fcv') as HTMLCanvasElement)
-    ctx = cv.getContext("2d");
-  }, []);
-  useEffect(() => {
-    if (props.synth && (props.synth !== synth)) {
-      setSynth(props.synth);
-    }
-  }, [props]);
-  useEffect(() => {
-    drawAnal();
-  }, [analBuff]);
-
-  //TODO: change colors for clarity
   const drawAnal = () => {
-    if (synth) { } else return;
+    let cv: HTMLCanvasElement = canvasRef.current;
+    let ctx = cv.getContext('2d');
     let step = cv.clientWidth / analBuff.length;
     let heightMult = cv.clientHeight / 100;
     ctx.fillStyle = "#0505F5";
@@ -44,27 +37,51 @@ const AnalView = (props: { wasmInstance: any, synth: WaveSynth }) => {
     ctx.stroke();
   }
 
-  const animate = (dt:number) => {
-    Promise.resolve().then(() => setAnalBuff(synth.get_fspace()));
-    requestAnimationFrame(animate);
+  //starts animation loop
+  const init = () => {
+    if (!(synth && analBuff)) return;
+    let requestId;
+    const animate = (dt: number) => {
+      let newBuff = synth.get_fspace();
+      setAnalBuff(newBuff);
+      requestId = requestAnimationFrame(animate);
+    }
+    animate(0);
+
+    //return callback to cleanup
+    return () => cancelAnimationFrame(requestId);
   }
 
-  
+  //long chain of useeffect waits for each thing to be set before triggering a dependent thing
+  useEffect(() => {
+    if (props.synth && (props.synth !== synth)) {
+      Promise.resolve().then(() => ignoreErrors(()=>{setSynth(props.synth);}));
+    }
+  }, [props]);
+  useEffect(() => {
+    Promise.resolve().then(() => ignoreErrors(()=>{setAnalBuff(synth.get_fspace());}));
+  }, [synth]);
+  useEffect(() => {
+    if(analBuff == null) return;
+    if(doneLoading) drawAnal(); 
+    else Promise.resolve().then(() => setDoneLoading(true));
+  }, [analBuff])
+  useEffect(() => {
+    if(doneLoading){
+      console.log('spectrogram finished loading')
+      init();
+    }
+  }, [doneLoading])
 
   return (
     <div>
       <h2>Spectrogram</h2>
+      {!doneLoading ? 'Loading...' : ''}
       <div id='fcv-container' >
-        <canvas id='fcv'/>
+        <canvas ref={canvasRef} id='fcv' />
       </div>
-      <button onClick = {()=>Promise.resolve().then(() => requestAnimationFrame(animate))}>start</button>
     </div>
   );
 }
-
-
-/**---------UTILS---------**/
-//cheap way to deepcopy in js
-const deepcopy = (buff:Float32Array):Float32Array => buff.map(el => el);
 
 export default AnalView;

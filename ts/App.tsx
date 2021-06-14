@@ -25,13 +25,14 @@ const App = () => {
         loadWasm(w);
     }, []);
     useEffect(() => {
-        Promise.resolve().then(() =>
-            setSynth(new wasm.WaveSynth())
+        if(!wasm) return;
+        Promise.resolve().then(() =>setSynth(new wasm.WaveSynth())
         )
     }, [wasm]);
     useEffect(() => {
+        if(!synth)return;
         //I wrap this in an empty promise so React can update state without hanging on it
-        Promise.resolve().then(() => {
+        Promise.resolve().then(() => {   
             let sampleRate = synth.get_sample_rate();
             let fftLen = synth.get_fft_len();
             samplerange = new Float32Array(fftLen);
@@ -47,7 +48,12 @@ const App = () => {
     return (
         <div>
             <h1>WaveSculptor_1.0</h1>
-            <div style={{ display: 'grid', gridTemplateColumns:'60% 40%'}}>
+            <div style={{ display: 'grid', gridTemplateColumns:'100%'}}>
+                
+                <AnalView 
+                        wasmInstance = {wasm}
+                        synth = {synth}
+                    />
                 <Piano
                     noteRange={{ first: firstNote, last: lastNote }}
                     playNote={(midiNumber) => { if (synth) synth.start_note(midiNumber) }}
@@ -55,10 +61,6 @@ const App = () => {
                     width={800}
                     keyboardShortcuts={keyboardShortcuts}
                 />
-                <AnalView 
-                        wasmInstance = {wasm}
-                        synth = {synth}
-                    />
                 <SculptView
                     wasmInstance = {wasm}
                     synth={synth}
@@ -70,4 +72,12 @@ const App = () => {
         </div>
     );
 }
+
+function ignoreErrors(cb:Function){
+    try{
+      cb();
+    }
+    catch(e){} //drop errors
+  }
+
 export default App;
